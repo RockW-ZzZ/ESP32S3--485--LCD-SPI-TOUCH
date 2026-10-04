@@ -1,0 +1,60 @@
+# Build directories at any depth (ESP-IDF, host tests, CMake and PlatformIO).
+build/
+build-*/
+build_*/
+cmake-build-*/
+.pio/
+
+# Firmware images, object files, libraries and host test executables.
+*.bin
+*.elf
+*.hex
+*.uf2
+*.axf
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.exe
+*.so
+*.so.*
+*.dylib
+*.map
+*.lst
+*.sym
+*.d
+*.dep
+*.su
+*.exp
+*.pdb
+*.idb
+*.ilk
+*.pch
+*.gch
+*.tlog/
+
+# Generated CMake / Ninja state, including builds outside a build directory.
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+build.ninja
+rules.ninja
+.ninja_deps
+.ninja_log
+build*.log
+
+# Generated ESP-IDF backups; sdkconfig and sdkconfig.defaults remain versioned.
+sdkconfig.old
+
+# Python test caches and compiler coverage/profiling output.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
