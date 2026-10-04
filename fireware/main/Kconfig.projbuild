@@ -1,0 +1,118 @@
+menu "Board basic drivers"
+    config BOARD_LVGL_BENCHMARK
+        bool "Run LVGL 8 benchmark at boot (480x320 landscape)"
+        default y
+        select LV_USE_DEMO_BENCHMARK
+        select LV_USE_FONT_COMPRESSED
+        select LV_DRAW_COMPLEX
+        select LV_USE_LABEL
+        select LV_USE_IMG
+        select LV_USE_ARC
+        select LV_USE_TABLE
+        select LV_USE_FLEX
+        help
+            Runs the bundled LVGL 8.4 benchmark once at maximum speed,
+            then keeps its scrollable result table on screen. Results also go
+            to USB when LVGL logging is enabled. GT911 is consumed by LVGL.
+    config BOARD_LVGL_BUFFER_LINES
+        int "LVGL RGB565 draw buffer rows in PSRAM"
+        depends on BOARD_LVGL_BENCHMARK
+        range 10 80
+        default 40
+    config BOARD_LCD_SPI_MHZ
+        int "LCD SPI clock (MHz)"
+        range 1 40
+        default 20
+    config BOARD_LCD_COLOR_TEST
+        bool "Draw RGB color bars at boot (no GUI)"
+        depends on !BOARD_LVGL_BENCHMARK
+        default n
+    config BOARD_TOUCH_SWAP_XY
+        bool "Swap native touch X/Y before landscape rotation"
+        default n
+    config BOARD_TOUCH_MIRROR_X
+        bool "Mirror native touch X before landscape rotation"
+        default n
+    config BOARD_TOUCH_MIRROR_Y
+        bool "Mirror native touch Y before landscape rotation"
+        default n
+    menu "RS485 port 1 (UART1, TX/RX/DE 17/18/21)"
+        config BOARD_RS4851_BAUD
+            int "Baud rate"
+            range 1200 115200
+            default 9600
+        choice BOARD_RS4851_PARITY
+            prompt "Parity"
+            default BOARD_RS4851_PARITY_NONE
+            config BOARD_RS4851_PARITY_NONE
+                bool "None"
+            config BOARD_RS4851_PARITY_EVEN
+                bool "Even"
+            config BOARD_RS4851_PARITY_ODD
+                bool "Odd"
+        endchoice
+        config BOARD_RS4851_TWO_STOP_BITS
+            bool "Two stop bits"
+            default n
+            help
+                Match the connected slave. Standard Modbus without parity uses
+                two stop bits; the default 8N1 is common on sensor devices.
+    endmenu
+    menu "RS485 port 2 (UART2, TX/RX/DE 11/12/14)"
+        config BOARD_RS4852_BAUD
+            int "Baud rate"
+            range 1200 115200
+            default 9600
+        choice BOARD_RS4852_PARITY
+            prompt "Parity"
+            default BOARD_RS4852_PARITY_NONE
+            config BOARD_RS4852_PARITY_NONE
+                bool "None"
+            config BOARD_RS4852_PARITY_EVEN
+                bool "Even"
+            config BOARD_RS4852_PARITY_ODD
+                bool "Odd"
+        endchoice
+        config BOARD_RS4852_TWO_STOP_BITS
+            bool "Two stop bits"
+            default n
+            help
+                Match the connected slave. Standard Modbus without parity uses
+                two stop bits; the default 8N1 is common on sensor devices.
+    endmenu
+    config BOARD_SERIAL_BAUD
+        int "Isolated serial baud rate (8N1)"
+        range 1200 115200
+        default 115200
+    config BOARD_SERIAL_ECHO
+        bool "Echo received CN2 serial data"
+        default n
+    config BOARD_MODBUS_DEMO
+        bool "Enable two concurrent READ-ONLY Modbus demo tasks"
+        default n
+        help
+            Both UARTs are initialized regardless of this option. When enabled,
+            one task per port reads 2 holding registers every 2 seconds after
+            each transaction. Slave address/register must match your devices.
+            A timeout on one port does not block the other. No automatic writes.
+    config BOARD_MODBUS1_SLAVE
+        int "Port 1 demo slave address"
+        depends on BOARD_MODBUS_DEMO
+        range 1 247
+        default 1
+    config BOARD_MODBUS1_START_REGISTER
+        int "Port 1 demo start register (zero based)"
+        depends on BOARD_MODBUS_DEMO
+        range 0 65534
+        default 0
+    config BOARD_MODBUS2_SLAVE
+        int "Port 2 demo slave address"
+        depends on BOARD_MODBUS_DEMO
+        range 1 247
+        default 1
+    config BOARD_MODBUS2_START_REGISTER
+        int "Port 2 demo start register (zero based)"
+        depends on BOARD_MODBUS_DEMO
+        range 0 65534
+        default 0
+endmenu

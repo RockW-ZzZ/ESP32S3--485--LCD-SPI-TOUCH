@@ -1,0 +1,5 @@
+/build/
+/sdkconfig.old
+/tests/build/
+/managed_components/
+/*.log
