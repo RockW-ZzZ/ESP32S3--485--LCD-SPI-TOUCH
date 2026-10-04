@@ -3,6 +3,7 @@
 本工程的全部项目源码、字体、图片、Kconfig、构建脚本及测试均在 `fireware` 内。
 旧参考目录 `ref-code` 仅是历史移植来源，删除它不会影响编译或运行；没有符号链接、
 相对包含或构建步骤指向该目录。`hardware` 是设计资料，也不是构建输入。
+充电业务与网页已从 `demo` 移植到本地组件，`demo` 同样不是构建输入。
 
 ## 项目内依赖
 
@@ -10,6 +11,8 @@
 | --- | --- | --- |
 | 应用与任务 | [main](main) | LVGL benchmark、双路 Modbus 示例、按键及串口处理 |
 | 本板驱动 | [board_drivers](components/board_drivers) | ST7796、GT911、GPIO、UART0、双 UART RS485 / Modbus |
+| 双路充电控制与网络 | [charger](components/charger) | 原生 ESP-IDF 控制、NVS、Wi-Fi、HTTP、OTA，内嵌网页来自用户 demo 的移植 |
+| mDNS 1.10.0 | [mdns](components/mdns) | Espressif 官方组件，Apache-2.0；源码、许可、校验表已内置 |
 | LVGL 适配 | [board_lvgl](components/board_lvgl) | 显示刷新、触摸输入、时钟与 GUI 任务 |
 | LVGL 8.4.0 核心、字体、图片与 benchmark | [lvgl](components/lvgl) | 原样内置，MIT 许可；不依赖组件管理器下载 |
 | LVGL 许可与来源 | [LICENCE.txt](components/lvgl/LICENCE.txt)、[PORTING.md](components/lvgl/PORTING.md) | 保留原始许可、版本与提交信息 |
@@ -38,17 +41,33 @@ SDK 和编译器继续使用本机安装，不复制到项目、不升级、不�
 
 ## 独立性验证
 
+LVGL 校验表保留移植来源的 SHA-256；由于既有 Git 提交将 CRLF 转为 LF，校验脚本只容许
+文本换行差异，其他字节仍须匹配。`.gitattributes` 固定 LVGL 文本检出为 LF，mDNS 按上游
+原始字节存储；图片等二进制资源始终按原始字节校验。
+
 ```powershell
 & 'C:\Espressif\tools\python\v6.1\venv\Scripts\python.exe' tests\check_dependencies.py
 & 'C:\Espressif\tools\python\v6.1\venv\Scripts\python.exe' tests\check_dependencies.py --prepare-standalone
 ```
 
 第二条命令在 `tests/build/standalone_<随机编号>` 创建只含固件输入的副本，不拷贝既有
-`build` 或 `sdkconfig`，也不修改、移动、删除原来的参考目录。在输出目录执行
-`.\build.ps1 build` 进行从零构建；该副本另外开启双路只读 Modbus 示例，第二路使用
-19200 baud、从站 2、起始寄存器 10，以检查独立配置和两任务的编译链接。
-这些是验证副本的参数，不会改变主工程默认配置，也没有向实物发送请求。
+`build` 或 `sdkconfig`，也不修改原始资料目录。在输出目录执行 `./build.ps1 build`
+从零构建。副本包含充电控制、网页、mDNS 与 OTA 分区表，无 `demo`、旧参考目录或硬件资料。
+可选的通用 Modbus 示例、不同奇偶校验及无 GUI 分支用 `tests/check_optional_build.py` 检查。
 
-2026-10-04 验证结果：主工程与上述独立副本均使用本机 ESP-IDF 6.1 构建通过。
-独立副本的 711 个编译单元源文件均位于副本或本机 SDK 中；两路示例的配置值已核对。
-主工程应用为 569,648 字节，开启双路示例的验证副本为 576,464 字节。
+## 充电与 mDNS 来源
+
+充电报文和业务、网页画布/样式移植自用户提供的
+`____________copy_20260912223219.ino`，源文件 SHA-256：
+`ac5d4724782fb9c4e88bc024d60ce33def6b69b3d5c998b2320fecf41d6ab6c6`。
+源文件无需保留在构建目录；`components/charger` 已包含本轮所需实现与网页资源。
+不引入 Arduino、LovyanGFX、WebServer、Preferences 或 Update 库。
+
+mDNS 取自 [Espressif esp-protocols](https://github.com/espressif/esp-protocols/tree/98d79b16138b419751cce79a015f8b5b0b51bcc1/components/mdns)，
+标签 `mdns-v1.10.0`，提交 `98d79b16138b419751cce79a015f8b5b0b51bcc1`。
+保留组件源码、构建配置、文档与 Apache-2.0 LICENSE，不包含上游测试/示例；40 个文件
+由 `components/mdns/SOURCE_SHA256.json` 校验。其 manifest 仅要求本机 IDF >= 5.0，
+`dependencies.lock` 记录当前 IDF 6.1，无需下载额外组件。
+
+测试新增使用本机 Node.js 执行内嵌网页脚本，无 npm 包；MSVC 编译真实充电 service/codec/policy
+并用模拟 UART/时钟验证业务。固件始终由本机 ESP-IDF / Xtensa GCC 编译，不改装 SDK。

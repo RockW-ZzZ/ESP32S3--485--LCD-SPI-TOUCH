@@ -1,4 +1,11 @@
 menu "Board basic drivers"
+    config BOARD_CHARGER_APP
+        bool "Run two independent chargers, Wi-Fi and web control"
+        default y
+        help
+            Vendor RTU protocol migrated from the demo. Startup requests OFF.
+            Voltage/current writes every 15 s while running; initial preload
+            and power/stop/protection commands run immediately.
     config BOARD_LVGL_BENCHMARK
         bool "Run LVGL 8 benchmark at boot (480x320 landscape)"
         default y
@@ -89,6 +96,7 @@ menu "Board basic drivers"
         default n
     config BOARD_MODBUS_DEMO
         bool "Enable two concurrent READ-ONLY Modbus demo tasks"
+        depends on !BOARD_CHARGER_APP
         default n
         help
             Both UARTs are initialized regardless of this option. When enabled,

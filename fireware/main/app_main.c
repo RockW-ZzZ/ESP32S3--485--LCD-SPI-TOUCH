@@ -2,6 +2,9 @@
 #include "board_pins.h"
 #include "board_lvgl.h"
 #include "buttons.h"
+#include "buzzer.h"
+#include "charger_service.h"
+#include "nvs_flash.h"
 #include "lcd_st7796.h"
 #include "touch_gt911.h"
 #include "serial_port.h"
@@ -61,8 +64,9 @@ static void modbus_task(void *arg)
     }
 }
 #endif
-static void init_modbus_ports(void)
+static unsigned init_modbus_ports(void)
 {
+    unsigned ready_mask = 0;
     uart_parity_t parity[RS485_PORT_COUNT] = {UART_PARITY_DISABLE, UART_PARITY_DISABLE};
     uart_stop_bits_t stop[RS485_PORT_COUNT] = {UART_STOP_BITS_1, UART_STOP_BITS_1};
 #ifdef CONFIG_BOARD_RS4851_PARITY_EVEN
@@ -85,17 +89,24 @@ static void init_modbus_ports(void)
     const char *names[RS485_PORT_COUNT] = {"RS485-1 UART1 TX17/RX18/DE21", "RS485-2 UART2 TX11/RX12/DE14"};
     for (unsigned i = 0; i < RS485_PORT_COUNT; ++i) {
         bool ok = report(names[i], rs485_init((rs485_port_t)i, baud[i], parity[i], stop[i]));
+        if (ok) ready_mask |= 1U << i;
 #ifdef CONFIG_BOARD_MODBUS_DEMO
         if (ok && xTaskCreate(modbus_task, i == 0 ? "modbus1" : "modbus2", 4096,
                               (void *)&modbus_demo_configs[i], 3, NULL) != pdPASS)
             ESP_LOGE(TAG, "Cannot create Modbus task for port %u", i + 1);
 #else
-        if (ok) ESP_LOGI(TAG, "RS485-%u Modbus master ready; automatic queries disabled", i + 1);
+        if (ok) ESP_LOGI(TAG, "RS485-%u transport ready", i + 1);
 #endif
     }
+    return ready_mask;
 }
 void app_main(void)
 {
+    report("GPIO13 buzzer OFF", buzzer_init());
+#ifdef CONFIG_BOARD_CHARGER_APP
+    /* Keep existing credentials/settings on NVS errors; never silently erase. */
+    bool storage_ok = report("NVS", nvs_flash_init());
+#endif
     ESP_LOGI(TAG, "ESP32-S3-WROOM-1U-N16R8 basic drivers, IDF %s", esp_get_idf_version());
     ESP_LOGI(TAG, "PSRAM detected: %u bytes", (unsigned)esp_psram_get_size());
     bool lcd_ok = report("ST7796 480x320 landscape", lcd_init());
@@ -116,7 +127,14 @@ void app_main(void)
         if (xTaskCreate(serial_task, "serial_demo", 4096, NULL, 3, NULL) != pdPASS)
             ESP_LOGE(TAG, "Cannot create serial task");
     }
-    init_modbus_ports();
+    unsigned ports_ready = init_modbus_ports();
+#ifdef CONFIG_BOARD_CHARGER_APP
+    if (storage_ok && report("Dual charger service", charger_service_init(ports_ready))) {
+        if (report("Wi-Fi AP + STA", charger_network_start())) report("Charger web", charger_web_start());
+    }
+#else
+    (void)ports_ready;
+#endif
     bool gui_active = false;
 #ifdef CONFIG_BOARD_LVGL_BENCHMARK
     if (lcd_ok) gui_active = report("LVGL benchmark", board_lvgl_start(touch_ok));

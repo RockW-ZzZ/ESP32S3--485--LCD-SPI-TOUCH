@@ -20,7 +20,7 @@ free.argtypes = [c.c_void_p]
 free.restype = c.c_void_p
 variants = [
     ('app_main.c', 'all_examples_even', [
-        'BOARD_LCD_COLOR_TEST', 'BOARD_SERIAL_ECHO', 'BOARD_MODBUS_DEMO',
+        '!BOARD_CHARGER_APP', 'BOARD_LCD_COLOR_TEST', 'BOARD_SERIAL_ECHO', 'BOARD_MODBUS_DEMO',
         'BOARD_MODBUS1_SLAVE=1', 'BOARD_MODBUS1_START_REGISTER=0',
         'BOARD_MODBUS2_SLAVE=2', 'BOARD_MODBUS2_START_REGISTER=10',
         'BOARD_RS4852_PARITY_ODD', 'BOARD_RS4852_TWO_STOP_BITS',

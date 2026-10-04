@@ -14,7 +14,8 @@ esp_err_t rs485_init(rs485_port_t port, int baud, uart_parity_t parity, uart_sto
  * Different ports can run concurrently from different tasks, even at different
  * baud rates. RTS controls that port's ISO3082 DE+/RE automatically.
  * tx/rx include CRC. timeout_ms bounds lock/idle wait separately, then the entire
- * response after TX completes (1..60000 ms). No broadcast/no automatic retries.
+ * response after TX completes (1..60000 ms). Always expects a reply; no retries.
+ * Raw transport does not interpret addresses (vendor address 0 may reply).
  * RX UART parity/framing/overflow errors reject the whole transaction. */
 esp_err_t rs485_exchange(rs485_port_t port, const uint8_t *tx, size_t tx_length,
                          uint8_t *rx, size_t capacity, size_t *rx_length,

@@ -17,6 +17,7 @@
 #define BOARD_RS4852_TX     11
 #define BOARD_RS4852_RX     12
 #define BOARD_RS4852_DE_RE  14  /* U7, CN1 pins 1/2; high = TX. */
+#define BOARD_BUZZER        13  /* Active buzzer via Q1: high = sound. */
 #define BOARD_KEY1          41  /* Reserved input, 200 ms stable filter. */
 #define BOARD_KEY2          40  /* Hold 2 s to toggle touch input. */
 #define BOARD_SERIAL_TX     43

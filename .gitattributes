@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# LVGL was already normalized in Git; use predictable LF text on checkout.
+fireware/components/lvgl/** text=auto eol=lf
+# The new mDNS component is stored byte-for-byte as published upstream.
+fireware/components/mdns/** -text

@@ -1,0 +1,392 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>充电器远程控制</title>
+<style>
+:root{
+ --bg:#0b0e17;--bg2:#11141f;--card:#161a26;--card2:#1c2130;
+ --fg:#e8ecf3;--muted:#8a93a6;--line:#252b3b;
+ --acc:#2ea8ff;--acc2:#0b84e0;--ok:#18b26b;--red:#e5484d;--uiw:900px;--r:12px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 50% -10%,#16203a 0%,var(--bg) 60%) fixed;color:var(--fg);
+ font-family:"Inter","Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+ display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 12px 24px}
+.bar,#st,#panel{width:100%;max-width:var(--uiw)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input,select{font-size:14px;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);outline:none;transition:.15s}
+input::placeholder{color:#5b6579}
+input:focus,select:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(46,168,255,.18)}
+input{flex:1;min-width:84px}
+button{font-size:14px;font-weight:600;padding:9px 14px;border-radius:10px;border:0;cursor:pointer;color:#fff;
+ background:linear-gradient(180deg,var(--acc),var(--acc2));transition:.15s;box-shadow:0 2px 10px rgba(0,0,0,.28)}
+button:hover{filter:brightness(1.08);transform:translateY(-1px)}
+button:active{transform:translateY(0);filter:brightness(.95)}
+button.gray{background:linear-gradient(180deg,#3a4256,#2b3143)}
+button.red{background:linear-gradient(180deg,#ff5a60,#d13438)}
+button.green{background:linear-gradient(180deg,#23c97a,#12915a)}
+#st{font-size:12.5px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;line-height:1.7;word-break:break-all}
+canvas#ui{border-radius:14px;border:1px solid var(--line);box-shadow:0 12px 40px rgba(0,0,0,.5),0 0 24px rgba(46,168,255,.10);touch-action:manipulation;cursor:pointer;display:block;background:#000}
+#panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+#panel h3{margin:0 0 8px;color:#cfe4ff;font-size:14px;text-align:center;font-weight:600;letter-spacing:.3px}
+#wave{width:100%;height:200px;background:#0b0f19;border:1px solid var(--line);border-radius:10px;display:block}
+.ovl{position:fixed;inset:0;background:rgba(4,7,14,.66);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:none;justify-content:center;align-items:center;z-index:50;padding:14px}
+.box{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);border-radius:16px;padding:18px;width:min(420px,94vw);max-height:92vh;overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.box h3{margin:0 0 12px;color:#cfe4ff;font-size:15px;text-align:center;font-weight:700}
+#npVal{width:100%;text-align:center;font-size:30px;font-weight:700;color:#ffd54a;background:#0b0f19;border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:12px}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.keys button{padding:15px 0;font-size:21px;background:linear-gradient(180deg,#333c52,#262d3f);font-weight:600}
+.full{width:100%;padding:12px;margin-top:8px;font-size:15px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row input,.row select{width:110px;flex:none}
+.row label{min-width:60px;font-size:13.5px;color:#c3cbda}
+#pickSw{height:46px;border-radius:12px;margin-bottom:12px;border:1px solid var(--line)}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:linear-gradient(180deg,var(--acc),var(--acc2));color:#fff;padding:10px 20px;border-radius:999px;display:none;z-index:99;font-size:13px;max-width:92vw;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.hint{font-size:11.5px;color:var(--muted);margin-top:6px;text-align:center}
+</style></head><body>
+<div class="bar" id="modeBar"><strong>双路充电控制</strong>
+<select id="channel" onchange="selectChannel(this.value)"><option value="1">485-1 / UART1</option><option value="2">485-2 / UART2</option></select>
+<button class="red" onclick="stopNow()">停止当前路</button>
+<button class="gray" id="buzzBtn" onclick="setBuzzer()">蜂鸣器：关闭</button></div>
+<div class="bar" id="overview" style="white-space:pre-wrap"></div>
+<div class="hint">每路独立控制 · 运行设定每15秒更新 · 开关机与保护立即执行</div>
+<div class="bar" id="httpBar">
+ <input id="pin" type="password" placeholder="PIN（默认1234）" style="max-width:170px">
+</div>
+<div class="bar" id="wifiBar">
+ <input id="ssid" placeholder="WiFi SSID">
+ <input id="pw" type="password" placeholder="WiFi密码" style="max-width:130px">
+ <button onclick="saveWifi()">配网</button>
+</div>
+<div class="bar" id="toolBar">
+ <button onclick="openPresets()">预设</button>
+ <button onclick="openColor()">配色</button>
+ <button onclick="openCfg()">设置</button>
+ <button onclick="openPin()">改PIN</button>
+ <button onclick="doOTA()">OTA</button>
+ <button class="red" onclick="doReboot()">重启</button>
+</div>
+<div id="st">未连接</div>
+<canvas id="ui"></canvas>
+<div id="panel">
+ <h3>电压 / 电流 实时波形</h3>
+ <canvas id="wave"></canvas>
+ <div class="hint"><span style="color:#fd0">&#9679;电压V(左轴)</span> &nbsp; <span style="color:#0f8">&#9679;电流A(右轴)</span></div>
+</div>
+<input type="file" id="otaFile" accept=".bin" style="display:none">
+<div id="toast"></div>
+
+<div class="ovl" id="npOvl"><div class="box">
+ <h3 id="npTitle">设定值</h3>
+ <input id="npVal" readonly>
+ <div class="keys">
+  <button onclick="nk('7')">7</button><button onclick="nk('8')">8</button><button onclick="nk('9')">9</button>
+  <button onclick="nk('4')">4</button><button onclick="nk('5')">5</button><button onclick="nk('6')">6</button>
+  <button onclick="nk('1')">1</button><button onclick="nk('2')">2</button><button onclick="nk('3')">3</button>
+  <button onclick="nk('.')">.</button><button onclick="nk('0')">0</button><button onclick="nk('B')">退</button>
+ </div>
+ <button class="full green" onclick="npConfirm()">确认保存设定</button>
+ <button class="full gray" onclick="hide('npOvl')">取消</button>
+</div></div>
+
+<div class="ovl" id="cfOvl"><div class="box">
+ <h3 id="cfTitle">确认操作</h3>
+ <div id="cfMsg" class="hint"></div>
+ <button class="full green" onclick="cfYes()">确认</button>
+ <button class="full gray" onclick="hide('cfOvl')">取消</button>
+</div></div>
+
+<div class="ovl" id="preOvl"><div class="box">
+ <h3>选择预设</h3>
+ <button class="full" style="background:#1e5adc" onclick="applyPre(1)">PRESET 1</button>
+ <button class="full" style="background:#0ab45a" onclick="applyPre(2)">PRESET 2</button>
+ <button class="full" style="background:#e6aa00;color:#000" onclick="applyPre(3)">PRESET 3</button>
+ <button class="full" style="background:#f05014" onclick="applyPre(4)">PRESET 4</button>
+ <button class="full" style="background:#a028dc" onclick="applyPre(5)">PRESET 5</button>
+ <button class="full gray" onclick="hide('preOvl')">取消</button>
+</div></div>
+
+<div class="ovl" id="peOvl"><div class="box" style="width:min(520px,96vw)">
+ <h3>预设编辑（与实机 5 组对应）</h3>
+ <div id="peList"></div>
+ <button class="full gray" onclick="hide('peOvl')">关闭</button>
+</div></div>
+
+<div class="ovl" id="coOvl"><div class="box" style="width:min(720px,96vw)">
+ <h3>配色（点色块直接调色，双态色块左右两半分别对应 关/开）</h3>
+ <canvas id="ui2" style="width:100%;max-width:660px;display:block;margin:0 auto;cursor:pointer"></canvas>
+ <div class="bar" style="margin-top:8px">
+  <button class="green" style="flex:1" onclick="colorSave()">保存配色</button>
+  <button class="gray" style="flex:1" onclick="colorReset()">恢复默认</button>
+  <button class="gray" style="flex:1" onclick="hide('coOvl')">关闭</button>
+ </div>
+</div></div>
+
+<div class="ovl" id="pickOvl"><div class="box">
+ <h3 id="pickTitle">调色</h3>
+ <div id="pickSw"></div>
+ <div class="row"><label>R</label><input id="pkR" type="range" min="0" max="255" style="flex:1"><span id="pkRv" style="width:34px;text-align:right;font-size:13px"></span></div>
+ <div class="row"><label>G</label><input id="pkG" type="range" min="0" max="255" style="flex:1"><span id="pkGv" style="width:34px;text-align:right;font-size:13px"></span></div>
+ <div class="row"><label>B</label><input id="pkB" type="range" min="0" max="255" style="flex:1"><span id="pkBv" style="width:34px;text-align:right;font-size:13px"></span></div>
+ <input id="pkHex" placeholder="#RRGGBB" style="width:100%;text-align:center;margin-top:8px">
+ <button class="full green" onclick="pickOk()">确定</button>
+ <button class="full gray" onclick="hide('pickOvl')">取消</button>
+</div></div>
+
+<div class="ovl" id="cfGOvl"><div class="box">
+ <h3>系统设置</h3>
+ <div class="row"><label>端口</label><input id="cfgPort" type="number" min="1024" max="65535"></div>
+ <div class="row"><label>最大电压</label><input id="cfgMaxV" type="number" step="0.1" min="1" max="1000"></div>
+ <div class="row"><label>最大电流</label><input id="cfgMaxA" type="number" step="0.1" min="0.1" max="655.35"></div>
+ <div class="row"><label>最大功率</label><input id="cfgMaxP" type="number" step="1" min="0" max="100000"></div>
+ <div class="row"><label>爬坡间隔ms</label><input id="cfgRampMs" type="number" step="50" min="200" max="10000"></div>
+ <div class="row"><label>爬坡步进A</label><input id="cfgRampSt" type="number" step="0.005" min="0.005" max="5"></div>
+ <div class="row"><label>从机地址</label><input id="cfgAddr" type="number" min="0" max="247" style="width:70px"><button class="gray" onclick="doScan()">扫描</button><span id="scanRes" class="hint" style="text-align:right"></span></div>
+ <button class="full gray" onclick="clrAll()">清零 AH/WH/CNT/TRIP</button>
+
+<button class="full green" onclick="cfgSave()">保存（端口改动需重启）</button>
+ <button class="full gray" onclick="hide('cfGOvl')">取消</button>
+</div></div>
+
+<div class="ovl" id="pnOvl"><div class="box">
+ <h3>修改PIN</h3>
+ <input id="pnOld" type="password" placeholder="当前PIN" style="width:100%;margin-bottom:8px">
+ <input id="pnNew" type="password" placeholder="新PIN(4-16位)" style="width:100%;margin-bottom:10px">
+ <button class="full green" onclick="pinSave()">确认修改</button>
+ <button class="full gray" onclick="hide('pnOvl')">取消</button>
+</div></div>
+
+<div class="ovl" id="askOvl"><div class="box">
+ <h3>需要 PIN 码</h3>
+ <input id="askPin" type="password" placeholder="请输入PIN" style="width:100%;margin-bottom:10px">
+ <button class="full green" onclick="askOk()">确定并重试</button>
+ <button class="full gray" onclick="hide('askOvl')">取消</button>
+</div></div>
+
+<script>
+var selectedChannel=1, stateBusy=false, channelGeneration=0;
+var W=320,H=252,S=2,st=null,curField=null,pendAction=null,coSel=0,chartAxis='v';
+var DEFTHEME=[[10,12,20],[240,180,10],[10,170,70],[220,45,35],[20,120,190],[200,130,10],[140,60,190],[90,150,30],[240,130,20],[0,100,140],[80,60,220],[230,40,100],[220,40,160],[240,180,0],[100,60,160],[255,60,220],[230,220,20],[70,130,180],[255,40,40],[0,170,70],[230,25,25],[70,72,80],[0,200,120],[70,72,80],[50,120,255]];
+var theme=DEFTHEME.map(function(a){return a.slice()});
+var hist={v:[],a:[],w:[]};
+var last={v:54.6,a:15.0,tr:0.5,pm:819,run:false,preset:1,mode:0};
+var limV=100,limA=50,limP=3000;
+var cv=document.getElementById('ui'),ctx=cv.getContext('2d');
+var cv2=document.getElementById('ui2'),ctx2=cv2.getContext('2d');
+function hide(id){document.getElementById(id).style.display='none'}
+function show(id){document.getElementById(id).style.display='flex'}
+function toast(m){var t=document.getElementById('toast');t.innerText=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(function(){t.style.display='none'},2200)}
+function pinv(){return document.getElementById('pin').value}
+function rgb(a){return 'rgb('+a[0]+','+a[1]+','+a[2]+')'}
+function bsel(base){var f=0.45+0.55*(0.5+0.5*Math.sin(Date.now()/2000*2*Math.PI));return [Math.round(base[0]*f),Math.round(base[1]*f),Math.round(base[2]*f)]}
+function rr(c,x,y,w,h,r,fill){c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath();if(fill){c.fillStyle=fill;c.fill()}}
+function txt(c,s,x,y,w,h,fs,col){c.fillStyle=col;c.font='bold '+fs+'px sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText(s,x+w/2,y+h/2)}
+function fit(){
+ var maxW=960;var avail=Math.max(240,window.innerWidth-24);var dispW=Math.min(avail,maxW);
+ cv.width=960;cv.height=756;
+ cv.style.width=Math.round(dispW)+'px';cv.style.height=Math.round(dispW*H/W)+'px';
+ cv2.width=960;cv2.height=756;
+ document.documentElement.style.setProperty('--uiw',Math.round(dispW)+'px');
+}
+window.addEventListener('resize',fit);
+function authFail(){document.getElementById('askPin').value='';show('askOvl');}
+function askOk(){var v=document.getElementById('askPin').value;document.getElementById('pin').value=v;sessionStorage.setItem('chgPin',v);hide('askOvl');toast('PIN已填入，请重试');pullWifiCred();}
+async function api(path,opt){
+ const ch=selectedChannel, url=new URL(path,location.origin); url.searchParams.set('ch',ch);
+ const publicReads=['/state','/settings','/presets','/theme','/wifiget'];
+ opt=Object.assign({},opt||{}); if(!publicReads.includes(url.pathname)&&!opt.method)opt.method='POST';
+ const supplied=url.searchParams.get('pin');url.searchParams.delete('pin');
+ opt.headers=Object.assign({},opt.headers||{}, {'X-Charger-PIN':supplied===null?pinv():supplied});
+ if(opt.body instanceof URLSearchParams)opt.body=opt.body.toString();
+ try{const r=await fetch(url.pathname+url.search,opt);if(ch!==selectedChannel)throw new DOMException('Channel changed','AbortError');if(!r.ok){const text=await r.text();if(r.status===401)authFail();throw new Error(text||r.statusText);}return r;}
+ catch(e){if(e.name!=='AbortError')toast('485-'+ch+': '+e.message);throw e;}
+}
+
+function requireHttp(){return true;}
+
+
+
+
+
+function pullLimits(){api('/settings').then(function(r){return r.json()}).then(function(d){if(d.maxV)limV=d.maxV;if(d.maxA)limA=d.maxA;if(d.maxP)limP=d.maxP;}).catch(function(){});}
+function loadLocal(){var p=sessionStorage.getItem('chgPin');if(p)document.getElementById('pin').value=p;}
+
+function saveWifi(){if(!requireHttp())return;var s=document.getElementById('ssid').value,p=document.getElementById('pw').value;if(!s){toast('请输入SSID');return;}
+ api('/wifisave?ssid='+encodeURIComponent(s)+'&pass='+encodeURIComponent(p)+'&pin='+encodeURIComponent(pinv())).then(function(r){return r.text().then(function(t){toast(r.ok?('配网:'+t):('失败:'+t));if(r.ok)pullWifiCred();});}).catch(function(){});}
+function pullWifiCred(){if(!pinv())return;api('/wifiget').then(r=>r.json()).then(d=>{document.getElementById('ssid').value=d.ssid||'';document.getElementById('pw').value='';}).catch(()=>{});}
+
+var REG=[
+ {id:'setV',type:'num',name:'设定电压(V)',x:208,y:2,w:108,h:34,range:[1,100]},
+ {id:'setA',type:'num',name:'设定电流(A)',x:208,y:39,w:108,h:34,range:[0.1,50]},
+ {id:'trickle',type:'num',name:'停充电流(A)',x:208,y:76,w:108,h:34,range:[0,10]},
+ {id:'pwrMax',type:'num',name:'功率保护(W)',x:208,y:113,w:108,h:37,range:[0,3000]},
+ {id:'pr',type:'btn',name:'选择预设',x:162,y:154,w:74,h:26},
+ {id:'cc',type:'btn',name:'切换 CC/CP',x:240,y:154,w:74,h:26},
+
+ {id:'clr',type:'btn',name:'清零 AH/WH',x:240,y:183,w:74,h:26,confirm:true},
+ {id:'lock',type:'btn',name:'面板锁定',x:162,y:212,w:74,h:26},
+ {id:'run',type:'btn',name:'运行/停止',x:240,y:212,w:74,h:26,confirm:true}
+];
+var COLREG=[
+ {i:1,x:4,y:2,w:200,h:48},{i:2,x:4,y:52,w:200,h:48},{i:3,x:4,y:102,w:200,h:48},
+ {i:4,x:208,y:2,w:108,h:34},{i:5,x:208,y:39,w:108,h:34},{i:6,x:208,y:76,w:108,h:34},{i:7,x:208,y:113,w:108,h:37},
+ {i:8,x:6,y:154,w:74,h:26},{i:9,x:84,y:154,w:74,h:26},{i:12,x:162,y:154,w:74,h:26},{i:13,x:240,y:154,w:74,h:26},
+ {i:10,x:6,y:183,w:74,h:26},{i:11,x:84,y:183,w:74,h:26},{i:16,x:240,y:183,w:74,h:26},
+ {i:14,x:162,y:183,w:37,h:26},{i:15,x:199,y:183,w:37,h:26},
+ {i:21,x:6,y:212,w:37,h:26},{i:22,x:43,y:212,w:37,h:26},
+ {i:23,x:84,y:212,w:37,h:26},{i:24,x:121,y:212,w:37,h:26},
+ {i:17,x:162,y:212,w:37,h:26},{i:18,x:199,y:212,w:37,h:26},
+ {i:19,x:240,y:212,w:37,h:26},{i:20,x:277,y:212,w:37,h:26}
+];
+var TH_NAMES=['背景','电压V','电流A','功率W','设定V','设定A','停充A','功率保护','AH','WH','CNT','故障','预设','CC/CP','AP关','AP开','清零','锁定关','锁定开','RUN关','RUN开','485离线','485在线','WIFI离线','WIFI在线'];
+function hitReg(c,e,arr,unit){var rc=c.getBoundingClientRect();var px=(e.clientX-rc.left)*(W/rc.width),py=(e.clientY-rc.top)*(H/rc.height);for(var i=0;i<arr.length;i++){var r=arr[i];if(px>=r.x&&px<r.x+r.w&&py>=r.y&&py<r.y+r.h)return r;}return null;}
+cv.addEventListener('click',function(e){
+ if(!st)return;var r=hitReg(cv,e,REG,W);if(!r)return;
+ if(r.type==='num'){openNum(r);}
+ else if(r.id==='pr'){show('preOvl');}
+ else{pendAction=r;document.getElementById('cfTitle').innerText=r.name;document.getElementById('cfMsg').innerText='确认执行该操作？';show('cfOvl');}
+});
+function openNum(r){
+ if(!st)return;if((r.id==='setA'&&st.mode===1)||(r.id==='pwrMax'&&st.mode===0)){toast(st.mode?'CP模式自动计算电流':'CC模式功率随V×A计算');return;}
+ var rng=r.range.slice();rng[1]=r.id==='setV'?limV:r.id==='pwrMax'?limP:limA;
+ curField={id:r.id,name:r.name,range:rng};document.getElementById('npTitle').innerText='485-'+selectedChannel+' '+r.name;
+ document.getElementById('npVal').value={setV:st.sv,setA:st.sa,trickle:st.tr,pwrMax:st.pm}[r.id];show('npOvl');
+}
+
+function nk(k){var el=document.getElementById('npVal');if(k==='B')el.value=el.value.slice(0,-1);else el.value+=k;}
+function npConfirm(){
+ if(!curField)return;const v=Number(document.getElementById('npVal').value);
+ if(!Number.isFinite(v)||v<curField.range[0]||v>curField.range[1]){toast('范围 '+curField.range.join(' ~ '));return;}
+ api('/setparam?field='+curField.id+'&val='+v).then(()=>{toast('已保存，运行时下个15秒周期写入');hide('npOvl');pullState();}).catch(()=>{});
+}
+
+function cfYes(){
+ if(!pendAction){hide('cfOvl');return;}const a=pendAction;pendAction=null;hide('cfOvl');
+ const id=a.id==='run'?(st&&st.run?'stop':'start'):a.id;
+ api('/btn?id='+id).then(()=>{toast('命令已受理，请查看应答状态');pullState();}).catch(()=>{});
+}
+
+
+
+function applyPre(n){if(!requireHttp())return;api('/preset?n='+n+'&pin='+encodeURIComponent(pinv())).then(function(){toast('预设'+n);hide('preOvl');hide('peOvl');pullState();}).catch(function(){});}
+function openPresets(){if(!requireHttp())return;show('peOvl');api('/presets').then(function(r){return r.json()}).then(function(arr){
+ var g=document.getElementById('peList');g.innerHTML='';
+ arr.forEach(function(pa,i){
+  var row=document.createElement('div');row.className='row';row.style.flexWrap='wrap';
+  var lab=document.createElement('label');lab.innerText='P'+(i+1);row.appendChild(lab);
+  var inpV=document.createElement('input');inpV.type='number';inpV.step='0.1';inpV.value=pa[0];inpV.id='peV'+i;row.appendChild(inpV);
+  var inpA=document.createElement('input');inpA.type='number';inpA.step='0.1';inpA.value=pa[1];inpA.id='peA'+i;row.appendChild(inpA);
+  var b1=document.createElement('button');b1.className='green';b1.innerText='应用';b1.onclick=(function(n){return function(){applyPre(n)}})(i+1);row.appendChild(b1);
+  var b2=document.createElement('button');b2.className='gray';b2.innerText='保存';b2.onclick=(function(n){return function(){savePreset(n)}})(i);row.appendChild(b2);
+  g.appendChild(row);
+ });
+ }).catch(function(){});}
+function savePreset(i){var v=document.getElementById('peV'+i).value,a=document.getElementById('peA'+i).value;
+ api('/preset_set?n='+(i+1)+'&v='+v+'&a='+a+'&pin='+encodeURIComponent(pinv())).then(function(r){return r.text().then(function(t){toast(r.ok?'已保存':'失败:'+t)})}).catch(function(){});}
+function pullTheme(){api('/theme').then(function(r){return r.json()}).then(function(a){if(a&&a.length===25)theme=a.map(function(h){return [parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)];});}).catch(function(){});}
+async function pullState(){
+ if(stateBusy)return;stateBusy=true;const gen=channelGeneration;
+ try{const d=await (await api('/state')).json();if(gen!==channelGeneration)return;st=d;
+ last={v:d.sv,a:d.sa,tr:d.tr,pm:d.pm,run:d.run,preset:d.preset,mode:d.mode};
+ document.getElementById('st').textContent='485-'+d.ch+' | '+d.v.toFixed(1)+'V '+d.a.toFixed(2)+'A '+d.w.toFixed(0)+'W | '+d.st+' | '+(d.rs?'在线':'离线 / 旧读数')+' | '+(d.runActive?(d.run?'运行':'正在停止，等待OFF应答'):d.run?'启动中':d.stopped?'已确认停止':'等待OFF应答')+' | AH:'+d.ah.toFixed(3)+' WH:'+d.wh.toFixed(3)+' | TRIP:'+(d.trip||'无')+' #'+d.tripN+' | 下次设定写入:'+Math.ceil(d.nextWriteMs/1000)+'s';
+ document.getElementById('buzzBtn').textContent='蜂鸣器：'+(d.buzzer?'开启':'关闭');
+ if(d.rs){hist.v.push(d.v);hist.a.push(d.a);hist.w.push(d.w);if(hist.v.length>240){hist.v.shift();hist.a.shift();hist.w.shift();}}
+ drawWave();
+ }catch(e){if(gen===channelGeneration){st=null;ctx.clearRect(0,0,cv.width,cv.height);document.getElementById('st').textContent='无法连接：控制状态未知';}}finally{stateBusy=false;}
+}
+function selectChannel(v){selectedChannel=Number(v);channelGeneration++;st=null;hist={v:[],a:[],w:[]};pendAction=null;curField=null;document.querySelectorAll('.ovl').forEach(e=>e.style.display='none');ctx.clearRect(0,0,cv.width,cv.height);pullState();pullLimits();}
+async function pullOverview(){try{const values=await Promise.all([1,2].map(ch=>fetch('/state?ch='+ch).then(r=>{if(!r.ok)throw Error();return r.json();})));document.getElementById('overview').textContent=values.map(d=>'485-'+d.ch+'  '+(d.rs?'在线':'离线')+' / '+(d.runActive?'运行或正在停止':d.run?'启动中':d.stopped?'已停止':'等待OFF应答')+' / '+d.v.toFixed(1)+'V '+d.a.toFixed(2)+'A').join('    |    ');}catch(e){document.getElementById('overview').textContent='双路状态暂不可用';}}
+function stopNow(){api('/btn?id=stop').then(()=>{toast('停止命令已受理');pullState();}).catch(()=>{});}
+function setBuzzer(){api('/buzzer?on='+(st&&st.buzzer?0:1)).then(pullState).catch(()=>{});}
+
+function cur(i){return theme[i]||DEFTHEME[i]}
+function drawScreen(c){
+ if(!st)return;var d=st;c.fillStyle=rgb(cur(0));c.fillRect(0,0,W,H);
+ var lh=48,gap=2,cols=[rgb(cur(1)),rgb(cur(2)),rgb(cur(3))],lv=[d.v.toFixed(1)+'V',d.a.toFixed(2)+'A',d.w.toFixed(0)+'W'];
+ for(var i=0;i<3;i++){rr(c,4,2+i*(lh+gap),200,lh,5,cols[i]);txt(c,lv[i],4,2+i*(lh+gap),200,lh,30,'#fff');}
+ var rh=34,rg=4,rc=[rgb(cur(4)),rgb(cur(5)),rgb(cur(6)),rgb(cur(7))],rv=[d.sv.toFixed(1)+'V',d.sa.toFixed(1)+'A',d.tr.toFixed(1)+'A',d.pm.toFixed(0)+'W'];
+ for(var i=0;i<4;i++){rr(c,208,2+i*(rh+rg),108,rh,5,rc[i]);txt(c,rv[i],208,2+i*(rh+rg),108,rh,20,'#fff');}
+ var bw=74,bgp=4,bh=26,brg=3,bx=(320-(bw*4+bgp*3))/2,c0=bx,c1=bx+bw+bgp,c2=c1+bw+bgp,c3=c2+bw+bgp;
+ function cell1(x,y,col,t,fc){rr(c,x,y,bw,bh,3,rgb(col));c.fillStyle=fc||'#fff';c.textAlign='center';c.textBaseline='middle';c.font='bold 16px sans-serif';c.fillText(t,x+bw/2,y+bh/2);}
+ function cell2(x,y,col,v,lab,vc){rr(c,x,y,bw,bh,3,rgb(col));c.textAlign='center';c.textBaseline='middle';c.fillStyle=vc||'#fff';c.font='bold 16px sans-serif';c.fillText(v,x+bw/2,y+9);c.font='bold 9px sans-serif';c.fillText(lab,x+bw/2,y+20);}
+ var by=154;
+ cell2(c0,by,cur(8),d.ah.toFixed(0),'AH','#000');cell2(c1,by,cur(9),d.wh.toFixed(0),'WH','#fff');
+ cell1(c2,by,cur(12),'PRE'+d.preset);cell1(c3,by,cur(13),d.mode===0?'CC':'CP');by+=bh+brg;
+ cell1(c0,by,cur(10),String(d.cnt),'#fff');cell1(c1,by,cur(11),d.st);
+ cell1(c2,by,d.ap?cur(15):cur(14),'AP');cell1(c3,by,cur(16),'CLR');by+=bh+brg;
+ cell1(c0,by,d.rs?bsel(cur(22)):cur(21),'485');cell1(c1,by,d.wf?bsel(cur(24)):cur(23),'WIFI');
+ cell1(c2,by,d.lock?bsel(cur(18)):cur(17),'LOCK');cell1(c3,by,d.run?bsel(cur(20)):cur(19),d.run?'RUN':(d.stopped?'STOP':'WAIT'));
+ c.fillStyle='#8c91a0';c.font='10px sans-serif';c.textAlign='left';c.textBaseline='alphabetic';
+ c.fillText('ADR:'+d.addr+' '+(d.ap?'AP:ON':'AP:OFF')+' '+((d.wf&&d.ip)?d.ip:d.st)+' TRIP:'+d.trip+'#'+d.tripN,6,248);
+ if(d.estop){c.fillStyle='rgba(160,0,0,.85)';c.fillRect(0,0,W,H);c.fillStyle='#fff';c.textAlign='center';c.font='bold 40px sans-serif';c.fillText('E-STOP',W/2,H/2-8);}
+}
+(function loop(){if(cv.width){ctx.save();ctx.scale(cv.width/W,cv.height/H);drawScreen(ctx);ctx.restore();}requestAnimationFrame(loop);})();
+function niceMax(m){if(!(m>0))return 1;var e=Math.pow(10,Math.floor(Math.log10(m)));var f=m/e;var nf=f<=1?1:f<=1.5?1.5:f<=2?2:f<=3?3:f<=5?5:f<=7.5?7.5:10;return nf*e;}
+function fmt(v){if(v>=100)return v.toFixed(0);if(v>=10)return v.toFixed(1);return v.toFixed(2);}
+function drawWave(){
+ var wc=document.getElementById('wave');if(!wc)return;var w=wc.clientWidth||600,h=wc.clientHeight||200;if(wc.width!==w)wc.width=w;if(wc.height!==h)wc.height=h;
+ var x=wc.getContext('2d'),L=46,R=48,T=12,B=20,pw=w-L-R,ph=h-T-B;if(pw<10||ph<10)return;
+ x.fillStyle='#111';x.fillRect(0,0,w,h);
+ var n=hist.v.length;
+ var vmax=niceMax(Math.max(0.001,Math.max.apply(null,hist.v.concat([0]))));
+ var amax=niceMax(Math.max(0.001,Math.max.apply(null,hist.a.concat([0]))));
+ x.lineWidth=1;x.font='10px sans-serif';
+ for(var i=0;i<=4;i++){var yy=T+ph*i/4;x.strokeStyle='#242838';x.beginPath();x.moveTo(L,yy);x.lineTo(L+pw,yy);x.stroke();
+  x.fillStyle='#fd0';x.textAlign='right';x.textBaseline='middle';x.fillText(fmt(vmax*(1-i/4)),L-4,yy);
+  x.fillStyle='#0f8';x.textAlign='left';x.fillText(fmt(amax*(1-i/4)),L+pw+4,yy);}
+ x.fillStyle='#fd0';x.textAlign='left';x.fillText('V',L-4,T-4);
+ x.fillStyle='#0f8';x.textAlign='right';x.fillText('A',L+pw+44,T-4);
+ var step=Math.max(1,Math.round(n/6));x.textAlign='center';x.textBaseline='top';
+ for(var i=0;i<n;i+=step){var xx=L+pw*(n<=1?0:i/(n-1));x.strokeStyle='#1a1e2b';x.beginPath();x.moveTo(xx,T);x.lineTo(xx,T+ph);x.stroke();x.fillStyle='#8c91a0';x.fillText('-'+Math.round(n-1-i)+'s',xx,T+ph+3);}
+ function line(a,own,col){if(!a.length)return;x.strokeStyle=col;x.lineWidth=1.6;x.beginPath();for(var i=0;i<a.length;i++){var px=L+pw*(a.length<=1?0:i/(a.length-1));var py=T+ph-(a[i]/own)*ph*0.98;i?x.lineTo(px,py):x.moveTo(px,py);}x.stroke();}
+ line(hist.v,vmax,'#fd0');line(hist.a,amax,'#0f8');
+ x.strokeStyle='#3a3f52';x.lineWidth=1;x.strokeRect(L,T,pw,ph);
+}
+// ===== 配色 =====
+function openColor(){if(!requireHttp())return;show('coOvl');drawColorPreview();}
+function drawColorPreview(){
+ ctx2.save();ctx2.scale(cv2.width/W,cv2.height/H);ctx2.fillStyle=rgb(cur(0));ctx2.fillRect(0,0,W,H);
+ for(var i=0;i<3;i++)rr(ctx2,4,2+i*50,200,48,5,rgb(cur(1+i)));
+ for(var i=0;i<4;i++){rr(ctx2,208,2+i*(34+4),108,34,5,rgb(cur(4+i)));}
+ var bw=74,bgp=4,bh=26,brg=3,bx=(320-(bw*4+bgp*3))/2,c0=bx,c1=bx+bw+bgp,c2=c1+bw+bgp,c3=c2+bw+bgp,by=154;
+ rr(ctx2,c0,by,bw,bh,3,rgb(cur(8)));rr(ctx2,c1,by,bw,bh,3,rgb(cur(9)));rr(ctx2,c2,by,bw,bh,3,rgb(cur(12)));rr(ctx2,c3,by,bw,bh,3,rgb(cur(13)));
+ by+=bh+brg;rr(ctx2,c0,by,bw,bh,3,rgb(cur(10)));rr(ctx2,c1,by,bw,bh,3,rgb(cur(11)));rr(ctx2,c3,by,bw,bh,3,rgb(cur(16)));
+ // AP 分半
+ rr(ctx2,c2,by,37,bh,0,rgb(cur(14)));rr(ctx2,c2+37,by,37,bh,3,rgb(cur(15)));
+ by+=bh+brg;
+ rr(ctx2,c0,by,37,bh,0,rgb(cur(21)));rr(ctx2,c0+37,by,37,bh,3,rgb(cur(22)));
+ rr(ctx2,c1,by,37,bh,0,rgb(cur(23)));rr(ctx2,c1+37,by,37,bh,3,rgb(cur(24)));
+ rr(ctx2,c2,by,37,bh,0,rgb(cur(17)));rr(ctx2,c2+37,by,37,bh,3,rgb(cur(18)));
+ rr(ctx2,c3,by,37,bh,0,rgb(cur(19)));rr(ctx2,c3+37,by,37,bh,3,rgb(cur(20)));
+ ctx2.restore();
+}
+cv2.addEventListener('click',function(e){var r=hitReg(cv2,e,COLREG,W);if(!r)return;coSel=r.i;openPick();});
+function openPick(){var c=cur(coSel);document.getElementById('pickTitle').innerText='调色 - '+TH_NAMES[coSel];document.getElementById('pkR').value=c[0];document.getElementById('pkG').value=c[1];document.getElementById('pkB').value=c[2];pickSync();show('pickOvl');}
+function pickSync(){var r=+document.getElementById('pkR').value,g=+document.getElementById('pkG').value,b=+document.getElementById('pkB').value;var hx='#'+[r,g,b].map(function(v){var s=v.toString(16);return s.length<2?'0'+s:s}).join('');document.getElementById('pkRv').innerText=r;document.getElementById('pkGv').innerText=g;document.getElementById('pkBv').innerText=b;document.getElementById('pkHex').value=hx.toUpperCase();document.getElementById('pickSw').style.background='rgb('+r+','+g+','+b+')';}
+['pkR','pkG','pkB'].forEach(function(id){document.getElementById(id).addEventListener('input',pickSync);});
+document.getElementById('pkHex').addEventListener('change',function(e){var h=e.target.value.replace('#','');if(/^[0-9a-fA-F]{6}$/.test(h)){document.getElementById('pkR').value=parseInt(h.substr(0,2),16);document.getElementById('pkG').value=parseInt(h.substr(2,2),16);document.getElementById('pkB').value=parseInt(h.substr(4,2),16);pickSync();}});
+function pickOk(){theme[coSel]=[+document.getElementById('pkR').value,+document.getElementById('pkG').value,+document.getElementById('pkB').value];hide('pickOvl');drawColorPreview();toast('已修改，点“保存配色”写入设备');}
+function colorSave(){if(!theme||theme.length!==25){toast('配色数据异常');return;}
+ var c=theme.map(function(a){return [a[0],a[1],a[2]].map(function(v){var s=v.toString(16);return s.length<2?'0'+s:s}).join('')}).join(',');
+ api('/theme?pin='+encodeURIComponent(pinv()),{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'c='+c}).then(function(r){return r.text().then(function(t){toast(r.ok?'配色已保存':'保存失败:'+t);});}).catch(function(){});}
+function colorReset(){if(!requireHttp())return;api('/theme/reset?pin='+encodeURIComponent(pinv())).then(function(){toast('已恢复默认');pullTheme();setTimeout(drawColorPreview,300);}).catch(function(){});}
+// ===== 设置/PIN/OTA =====
+function openCfg(){show('cfGOvl');document.getElementById('scanRes').textContent='';api('/settings').then(r=>r.json()).then(d=>{for(const [id,key] of [['Port','port'],['MaxV','maxV'],['MaxA','maxA'],['MaxP','maxP'],['RampMs','rampMs'],['RampSt','rampSt'],['Addr','addr']])document.getElementById('cfg'+id).value=d[key];limV=d.maxV;limA=d.maxA;limP=d.maxP;}).catch(()=>{});}
+
+function doScan(){if(!requireHttp())return;document.getElementById('scanRes').innerText='扫描中...';api('/scan?pin='+encodeURIComponent(pinv())).then(function(){pollScan(0,channelGeneration);}).catch(function(){});}
+function pollScan(k,gen){if(gen!==channelGeneration)return;if(k>180){document.getElementById('scanRes').innerText='未找到';return;}api('/state').then(function(r){return r.json()}).then(function(d){if(d.scanDone){document.getElementById('scanRes').innerText=d.scanFound?('找到地址 '+d.scan):'未找到';if(d.scanFound)document.getElementById('cfgAddr').value=d.scan;pullState();}else setTimeout(function(){pollScan(k+1,gen)},500);}).catch(function(){});}
+function clrAll(){if(!requireHttp())return;api('/btn?id=clrall&pin='+encodeURIComponent(pinv())).then(function(){toast('已清零 AH/WH/CNT/TRIP');pullState();}).catch(function(){});}
+
+
+function cfgSave(){var form=new URLSearchParams();for(const [id,key] of [['Port','port'],['MaxV','maxV'],['MaxA','maxA'],['MaxP','maxP'],['RampMs','rampMs'],['RampSt','rampSt'],['Addr','addr']])form.set(key,document.getElementById('cfg'+id).value);api('/settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form.toString()}).then(()=>{toast('已保存，端口改动重启生效');hide('cfGOvl');pullLimits();}).catch(()=>{});}
+
+function openPin(){if(!requireHttp())return;show('pnOvl');}
+function pinSave(){var o=document.getElementById('pnOld').value,n=document.getElementById('pnNew').value;api('/pinset?pin='+encodeURIComponent(o)+'&new='+encodeURIComponent(n)).then(()=>{document.getElementById('pin').value=n;sessionStorage.setItem('chgPin',n);hide('pnOvl');toast('PIN已修改');}).catch(()=>{});}
+
+function doOTA(){if(!requireHttp())return;document.getElementById('otaFile').click();}
+document.getElementById('otaFile').addEventListener('change',function(e){var f=e.target.files[0];if(!f)return;if(!confirm('升级前请停止两路充电器并等待OFF应答。上传应用固件 '+f.name+'？'))return;api('/update?pin='+encodeURIComponent(pinv()),{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:f}).then(function(r){toast(r.ok?'OTA成功,重启中':'OTA失败');}).catch(function(){});e.target.value='';});
+function doReboot(){if(!requireHttp())return;if(!confirm('确认重启开发板?'))return;api('/reboot?pin='+encodeURIComponent(pinv())).then(function(){toast('重启指令已发送');}).catch(function(){});}
+fit();loadLocal();
+document.getElementById('pin').addEventListener('change',function(){sessionStorage.setItem('chgPin',pinv());pullWifiCred();});
+setInterval(pullState,1000);setInterval(pullOverview,3000);pullState();pullOverview();pullTheme();pullLimits();pullWifiCred();
+</script></body></html>
